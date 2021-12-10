@@ -1,7 +1,7 @@
-import { Curtains, Plane } from "curtainsjs";
-import fragment from "../shaders_circle/fragment.glsl";
-import vertex from "../shaders_circle/vertex.glsl";
-import gsap from "gsap";
+import  Curtains from "../../curtainsjs-master/src/core/Curtains.js";
+import  Plane  from "../../curtainsjs-master/src/core/Plane.js";
+
+import gsap from "../../gsap/all.js";
 
 let activeTexture = 0;
 let currentTexture = 0;

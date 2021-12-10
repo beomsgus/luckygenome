@@ -20,7 +20,7 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
-    background-image: linear-gradient(rgba(120,120,120,0.2),rgba(120,120,120,0.2)), url(../img/bg.jpg);
+    background-image: linear-gradient(rgba(120,120,120,0.2),rgba(120,120,120,0.2)), url(../img/dna.jpg);
     background-size: cover;
 }
 

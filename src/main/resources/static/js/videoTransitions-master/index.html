@@ -51,7 +51,7 @@
                 </div>
             </div>
         </main>
-        <script id="vert"  type="text">precision mediump float;
+         <script id="vert"  type="text">precision mediump float;
 
             // default mandatory variables
             attribute vec3 aVertexPosition;
@@ -88,6 +88,18 @@
         </script>
         <script id="frag" type="text">precision mediump float;
 
+            // Linear interpolate center across center half of the image
+            // Transition from https://gl-transitions.com/editor/CrossZoom
+            // License: MIT
+            // Author: rectalogic
+            // ported by gre from https://gist.github.com/rectalogic/b86b90161503a0023231
+
+            // Converted from https://github.com/rectalogic/rendermix-basic-effects/blob/master/assets/com/rendermix/CrossZoom/CrossZoom.frag
+            // Which is based on https://github.com/evanw/glfx.js/blob/master/src/filters/blur/zoomblur.js
+            // With additional easing functions from https://github.com/rectalogic/rendermix-basic-effects/blob/master/assets/com/rendermix/Easing/Easing.glsllib
+
+            precision mediump float;
+
             varying vec3 vVertexPosition;
             varying vec2 vTextureCoord;
             varying vec2 vFirstTextureCoord;
@@ -101,49 +113,90 @@
             uniform float uFadeIn;
 
             // our textures samplers
+            // notice how it matches our data-sampler attributes
             uniform sampler2D firstTexture;
             uniform sampler2D secondTexture;
             uniform sampler2D thirdTexture;
             uniform sampler2D displacement;
 
-             vec4 getTextureByIndex(float index, vec2 vUv){
-                 vec4 result;
-                 if(index==0.){
-                     result = texture2D(firstTexture,vUv);
-                 }
-                 if(index==1.){
-                     result = texture2D(secondTexture,vUv);
-                 }
-                 if(index==2.){
-                     result = texture2D(thirdTexture,vUv);
-                 }
-                 return result;
-             }
-             float circle (in vec2 uv, in float radius, in float sharpness) {
-                 float dist = length(uv - vec2(0.5));
-                 return 1. - smoothstep(radius-sharpness,radius,dist);
-             }
-            void main() {
-                float progress = fract(uTransitionTimer);
+            float strength = 0.4; // = 0.4
 
-                vec2 center = vec2(0.5);
-                vec2 centerVector = vFirstTextureCoord - center;
-                vec2 vUv = (vFirstTextureCoord - vec2(0.5))*(0.2 + 0.8*uFadeIn) + vec2(0.5) + 0.6*vec2(0.,1. - uFadeIn);
+            const float PI = 3.141592653589793;
+
+            float Linear_ease(in float begin, in float change, in float duration, in float time) {
+                return change * time / duration + begin;
+            }
+
+            float Exponential_easeInOut(in float begin, in float change, in float duration, in float time) {
+                if (time == 0.0)
+                    return begin;
+                else if (time == duration)
+                    return begin + change;
+                time = time / (duration / 2.0);
+                if (time < 1.0)
+                    return change / 2.0 * pow(2.0, 10.0 * (time - 1.0)) + begin;
+                return change / 2.0 * (-pow(2.0, -10.0 * (time - 1.0)) + 2.0) + begin;
+            }
+
+            float Sinusoidal_easeInOut(in float begin, in float change, in float duration, in float time) {
+                return -change / 2.0 * (cos(PI * time / duration) - 1.0) + begin;
+            }
+
+            float rand (vec2 co) {
+              return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+            }
+
+
+
+            vec4 getTextureByIndex(float index, vec2 vUv){
+                vec4 result;
+                if(index==0.){
+                    result = texture2D(firstTexture,vUv);
+                }
+                if(index==1.){
+                    result = texture2D(secondTexture,vUv);
+                }
+                if(index==2.){
+                    result = texture2D(thirdTexture,vUv);
+                }
+                return result;
+            }
+            vec3 crossFade(in vec2 uv, in float dissolve, in float t1,in  float t2) {
+                return mix(getTextureByIndex(t1,uv).rgb, getTextureByIndex(t2,uv).rgb, dissolve);
+            }
+            void main() {
+
+                float progress = fract(uTransitionTimer);
+                float currentTexture = uFrom;
+                float nextTexture =  uTo;
+
+                vec4 current = getTextureByIndex(uFrom, vFirstTextureCoord);
+                vec4 next = getTextureByIndex(uTo, vFirstTextureCoord);
                 float mask = step(vTextureCoord.y,uFadeIn);
 
 
-                 float circleProgress = circle(vTextureCoord, progress*0.9, 0.2);
-                 float ease = progress*(2. - progress);
-                 vec2 nextUV = vUv + centerVector * (circleProgress - 1.0) + centerVector * ( 1. - ease) * 0.;
-                 vec2 currentUV = vUv - centerVector * circleProgress*0.5 - centerVector * progress * 0.2;
+                vec2 center = vec2(Linear_ease(0.25, 0.5, 1.0, progress), 0.5);
+                float dissolve = Exponential_easeInOut(0.0, 1.0, 1.0, progress);
 
-                 float currentTexture = mod(uFrom,3.);
-                 float nextTexture =  mod(uTo, 3.);
+                // Mirrored sinusoidal loop. 0->strength then strength->0
+                float strength = Sinusoidal_easeInOut(0.0, strength, 0.5, progress);
 
-                 vec4 current = getTextureByIndex(currentTexture, currentUV);
-                 vec4 next = getTextureByIndex(nextTexture, nextUV);
+                vec3 color = vec3(0.0);
+                float total = 0.0;
+                vec2 toCenter = center - vFirstTextureCoord;
 
-                 gl_FragColor = mix(vec4(0.,0.,0.,0),mix(current,next,circleProgress), mask);
+                /* randomize the lookup values to hide the fixed number of samples */
+                float offset = rand(vFirstTextureCoord);
+
+                for (float t = 0.0; t <= 40.0; t++) {
+                    float percent = (t + offset) / 40.0;
+                    float weight = 4.0 * (percent - percent * percent);
+                    color += crossFade(vFirstTextureCoord + toCenter * percent * strength, dissolve, currentTexture,nextTexture) * weight;
+                    total += weight;
+                }
+
+                gl_FragColor = vec4(color / total, 1.0);
+                gl_FragColor = mix(vec4(0.,0.,0.,0),gl_FragColor, mask);
             }
         </script>
         <script src="js/app.js"></script>
